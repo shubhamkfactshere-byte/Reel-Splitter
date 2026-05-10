@@ -10,7 +10,7 @@
   
   <!-- External Scripts -->
   <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
 
   <style>
     :root {
@@ -443,9 +443,10 @@
 
       <!-- Scrubber -->
       <div class="scrubber-area">
-        <div class="scrubber-header">
+        <div class="scrubber-header" style="display:flex; align-items:center;">
+          <button id="btn-play-pause" class="btn-outline" style="margin-right: 10px; padding: 4px 10px; font-size: 0.8rem; border-color: var(--accent); color: var(--accent);">▶ Play</button>
           <span>Frame for this part's thumbnail</span>
-          <span class="time-label" id="time-label">00:00</span>
+          <span class="time-label" id="time-label" style="margin-left:auto;">00:00</span>
         </div>
         <input type="range" id="frame-scrubber" min="0" max="100" value="0" step="0.01">
       </div>
@@ -562,7 +563,7 @@
 
   <div class="footer">
     <a href="#">Contact Us</a>
-    <a href="#">Terms & Conditions</a>
+    <a href="#">Terms &amp; Conditions</a>
     <a href="#">Privacy Policy</a>
   </div>
 
@@ -599,6 +600,8 @@
     let globalProgressBase = 0;
     let globalProgressScale = 1;
     let exportStartTime = 0;
+    let isPlaying = false;
+    let playAnimFrame = null;
 
     // Text Layers state
     let layers = {
@@ -924,12 +927,52 @@
 
     scrubber.addEventListener('input', (e) => {
       const t = parseFloat(e.target.value);
+      if (isPlaying) togglePlay(); // Pause if user scrubs manually
       video.currentTime = t;
       updateTimeLabel(t);
     });
 
     function updateTimeLabel(t) {
       timeLabel.textContent = formatTime(t);
+    }
+
+    // --- PLAY/PAUSE LOGIC ---
+    const btnPlayPause = document.getElementById('btn-play-pause');
+    btnPlayPause.addEventListener('click', togglePlay);
+
+    function togglePlay() {
+      if (!file) return;
+      if (isPlaying) {
+        video.pause();
+        isPlaying = false;
+        btnPlayPause.textContent = '▶ Play';
+        cancelAnimationFrame(playAnimFrame);
+      } else {
+        video.muted = false; // Unmute so user can hear
+        video.play();
+        isPlaying = true;
+        btnPlayPause.textContent = '⏸ Pause';
+        renderPlayLoop();
+      }
+    }
+
+    function renderPlayLoop() {
+      if (!isPlaying) return;
+      
+      const endLimit = Math.min((currentPartIndex + 1) * clipDurationSec, videoDuration);
+      if (video.currentTime >= endLimit) {
+        togglePlay();
+        video.currentTime = currentPartIndex * clipDurationSec;
+        drawCanvas();
+        scrubber.value = video.currentTime;
+        updateTimeLabel(video.currentTime);
+        return;
+      }
+      
+      drawCanvas();
+      scrubber.value = video.currentTime;
+      updateTimeLabel(video.currentTime);
+      playAnimFrame = requestAnimationFrame(renderPlayLoop);
     }
 
     // --- TEXT CONTROLS LOGIC ---
@@ -1014,7 +1057,7 @@
       isFFmpegLoading = true;
       
       ffmpeg = createFFmpeg({
-        corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
+        corePath: 'https://unpkg.com/@ffmpeg/core-mt@0.11.2/dist/ffmpeg-core.js',
         mainName: 'main',
         log: true
       });
@@ -1106,6 +1149,7 @@
         '-t', String(duration),
         '-filter_complex', `[0:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2[bg];[bg][1:v]overlay=0:0`,
         '-preset', 'ultrafast',
+        '-threads', '4',
         outName
       );
 
@@ -1186,7 +1230,6 @@
       progressBar.style.width = '0%';
 
       try {
-        const zip = new JSZip();
         let completed = 0;
 
         for (let i = 0; i < partsCount; i++) {
@@ -1202,7 +1245,15 @@
           try {
             await initFFmpeg();
             const blob = await processPart(i);
-            zip.file(`part_${i + 1}.mp4`, blob);
+            
+            // DOWNLOAD IMMEDIATELY TO SAVE MEMORY
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `part_${i + 1}.mp4`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
             completed++;
             
             try { ffmpeg.exit(); } catch(e){}
@@ -1216,15 +1267,6 @@
         
         if (completed > 0 && !cancelRequested) {
           document.getElementById('clip-counter').textContent = `Clips ready: ${completed} / ${partsCount}`;
-          statusTxt.textContent = 'Creating ZIP...';
-          const zipBlob = await zip.generateAsync({ type: 'blob' });
-          const url = URL.createObjectURL(zipBlob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'reel_clips.zip';
-          a.click();
-          URL.revokeObjectURL(url);
-          
           progressBar.style.width = '100%';
           statusTxt.textContent = 'Done!';
         }
