@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reel Video Splitter</title>
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&family=Mukta:wght@400;700&family=Hind:wght@400;700&family=Baloo+2:wght@400;700&family=Poppins:wght@400;700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  
+  <!-- External Scripts -->
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #0f0f0f;
+      --accent: #FFD700;
+      --panel: #1a1a1a;
+      --panel-hover: #2a2a2a;
+      --text: #ffffff;
+      --text-muted: #888888;
+      --border: #333333;
+      --danger: #e53e3e;
+      --font-main: 'Noto Sans', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Common Components */
+    .nav-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 20px;
+      background-color: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo {
+      font-size: 1.2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .nav-logo span {
+      color: var(--accent);
+    }
+    .btn-change {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 6px 12px;
+      font-size: 0.9rem;
+    }
+    .btn-change:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    
+    .footer {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      padding: 15px 20px;
+      background-color: var(--panel);
+      border-top: 1px solid var(--border);
+      margin-top: auto;
+    }
+    .footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+    .footer a:hover {
+      color: var(--accent);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    button {
+      cursor: pointer;
+      font-family: inherit;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 16px;
+      font-weight: 700;
+      transition: background-color 0.2s, opacity 0.2s;
+    }
+    
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    input, select {
+      background-color: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px;
+      border-radius: 4px;
+      font-family: inherit;
+    }
+
+    /* Upload Screen */
+    #upload-screen {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    #dropzone {
+      width: 100%;
+      max-width: 600px;
+      height: 300px;
+      border: 2px dashed var(--accent);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    #dropzone:hover, #dropzone.dragover {
+      background-color: rgba(255, 215, 0, 0.05);
+    }
+
+    #dropzone p {
+      font-size: 1.2rem;
+      margin-bottom: 10px;
+    }
+
+    #dropzone span {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* Main Editor */
+    #main-editor {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 20px;
+      gap: 20px;
+    }
+
+    @media (min-width: 1000px) {
+      #main-editor {
+        flex-direction: row;
+      }
+    }
+
+    /* Left Side: Preview */
+    .left-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      min-width: 0;
+    }
+
+    .canvas-container {
+      background-color: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+
+    canvas {
+      cursor: grab;
+      touch-action: none; /* For dragging */
+    }
+    canvas:active {
+      cursor: grabbing;
+    }
+
+    /* Scrubber Area */
+    .scrubber-area {
+      width: 100%;
+      max-width: 600px;
+      background: var(--panel);
+      padding: 15px;
+      border-radius: 8px;
+    }
+
+    .scrubber-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 0.9rem;
+    }
+
+    .scrubber-header .time-label {
+      color: var(--accent);
+      font-family: monospace;
+      font-size: 1rem;
+    }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      background: transparent;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 16px;
+      width: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      margin-top: -6px;
+    }
+
+    input[type=range]::-webkit-slider-runnable-track {
+      width: 100%;
+      height: 4px;
+      cursor: pointer;
+      background: var(--border);
+      border-radius: 2px;
+    }
+
+    /* Parts Navigation */
+    .parts-nav {
+      width: 100%;
+      max-width: 600px;
+      display: flex;
+      overflow-x: auto;
+      gap: 10px;
+      padding-bottom: 10px;
+    }
+    
+    .parts-nav::-webkit-scrollbar {
+      height: 6px;
+    }
+    .parts-nav::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    .part-pill {
+      background-color: var(--panel);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 8px 16px;
+      white-space: nowrap;
+      font-size: 0.9rem;
+    }
+
+    .part-pill.active {
+      background-color: rgba(255, 215, 0, 0.1);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Right Side: Controls */
+    .right-panel {
+      width: 100%;
+      max-width: 400px;
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    
+    .control-group label {
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      flex: 1;
+    }
+
+    .btn-outline.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .flex-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .flex-row input[type="text"] {
+      flex: 1;
+    }
+    
+    .flex-row input[type="color"] {
+      width: 40px;
+      height: 40px;
+      padding: 2px;
+      cursor: pointer;
+    }
+
+    .note {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .big-btn {
+      background-color: var(--accent);
+      color: #000;
+      padding: 15px;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+    
+    .big-btn:hover {
+      background-color: #e6c200;
+    }
+
+    /* Processing & Download Section */
+    #processing-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 15, 15, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 20px;
+    }
+
+    .progress-container {
+      width: 100%;
+      max-width: 400px;
+      background: var(--panel);
+      height: 10px;
+      border-radius: 5px;
+      margin: 20px 0;
+      overflow: hidden;
+    }
+
+    #progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width 0.2s;
+    }
+
+    .btn-cancel {
+      background-color: var(--danger);
+      color: white;
+      margin-top: 20px;
+    }
+
+    #download-section {
+      margin-top: 20px;
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn-export-part {
+      background-color: #2a2a2a;
+      color: white;
+      padding: 12px 20px;
+      font-size: 1rem;
+    }
+
+    .btn-export-all {
+      background-color: var(--accent);
+      color: #000;
+      padding: 12px 20px;
+      font-size: 1rem;
+    }
+  </style>
+</head>
+<body>
+  
+  <div class="nav-bar">
+    <div class="nav-logo">Reel <span>Splitter</span></div>
+    <button class="btn-change hidden" id="btn-change" onclick="resetApp()">← Change Video</button>
+  </div>
+
+  <!-- Video Element (Hidden) -->
+  <video id="source-video" class="hidden" playsinline muted></video>
+
+  <!-- UPLOAD SCREEN -->
+  <div id="upload-screen">
+    <div id="dropzone">
+      <p>Drop video here or click to upload</p>
+      <span>Accepts: mp4, mov, mkv, avi</span>
+      <input type="file" id="file-input" accept="video/mp4,video/quicktime,video/x-matroska,video/x-msvideo" class="hidden">
+    </div>
+  </div>
+
+  <!-- MAIN EDITOR -->
+  <div id="main-editor" class="hidden">
+    
+    <!-- LEFT PANEL -->
+    <div class="left-panel">
+      <!-- Canvas -->
+      <div class="canvas-container" id="canvas-container">
+        <canvas id="preview-canvas"></canvas>
+      </div>
+
+      <!-- Scrubber -->
+      <div class="scrubber-area">
+        <div class="scrubber-header">
+          <span>Frame for this part's thumbnail</span>
+          <span class="time-label" id="time-label">00:00</span>
+        </div>
+        <input type="range" id="frame-scrubber" min="0" max="100" value="0" step="0.01">
+      </div>
+
+      <!-- Parts Navigation -->
+      <div class="parts-nav" id="parts-nav">
+        <!-- Part pills injected here -->
+      </div>
+      
+      <!-- Export part specifically for left panel (Optional, placing in right panel for now as per plan, but the prompt says download section appears later) -->
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="right-panel">
+      
+      <!-- Aspect Ratio -->
+      <div class="control-group">
+        <label>Aspect Ratio</label>
+        <div class="btn-group">
+          <button class="btn-outline active" data-ratio="9:16" id="btn-ratio-9-16">9:16</button>
+          <button class="btn-outline" data-ratio="1:1" id="btn-ratio-1-1">1:1</button>
+          <button class="btn-outline" data-ratio="16:9" id="btn-ratio-16-9">16:9</button>
+        </div>
+      </div>
+
+      <!-- Clip Duration -->
+      <div class="control-group">
+        <label>Clip Duration (MM:SS)</label>
+        <div class="flex-row">
+          <input type="text" id="input-duration" value="00:15" placeholder="MM:SS">
+          <span class="note" id="parts-count-label">→ 1 part</span>
+        </div>
+      </div>
+
+      <!-- Title Text -->
+      <div class="control-group">
+        <label>Title Text</label>
+        <input type="text" id="title-text-input" value="Your title here">
+        
+        <div class="flex-row">
+          <input type="color" id="title-color" value="#FFD700">
+          <select id="title-font">
+            <option value="'Noto Sans'">Noto Sans</option>
+            <option value="'Mukta'">Mukta</option>
+            <option value="'Hind'">Hind</option>
+            <option value="'Baloo 2'">Baloo 2</option>
+            <option value="'Poppins'">Poppins</option>
+            <option value="'Roboto'">Roboto</option>
+          </select>
+        </div>
+        
+        <div class="flex-row">
+          <span class="note" style="min-width: 90px;" id="title-size-label">Size (36)</span>
+          <input type="range" id="title-size" min="10" max="80" value="36">
+        </div>
+        
+        <div class="btn-group">
+          <button class="btn-outline" data-align="left" data-layer="title">Left</button>
+          <button class="btn-outline active" data-align="center" data-layer="title">Center</button>
+          <button class="btn-outline" data-align="right" data-layer="title">Right</button>
+        </div>
+      </div>
+
+      <!-- Part Text -->
+      <div class="control-group">
+        <label>Part Text</label>
+        <span class="note">Auto — Part-1, Part-2...</span>
+        
+        <div class="flex-row">
+          <input type="color" id="part-color" value="#FFFFFF">
+          <select id="part-font">
+            <option value="'Noto Sans'">Noto Sans</option>
+            <option value="'Mukta'">Mukta</option>
+            <option value="'Hind'">Hind</option>
+            <option value="'Baloo 2'">Baloo 2</option>
+            <option value="'Poppins'">Poppins</option>
+            <option value="'Roboto'">Roboto</option>
+          </select>
+        </div>
+        
+        <div class="flex-row">
+          <span class="note" style="min-width: 90px;" id="part-size-label">Size (24)</span>
+          <input type="range" id="part-size" min="10" max="80" value="24">
+        </div>
+        
+        <div class="btn-group">
+          <button class="btn-outline" data-align="left" data-layer="part">Left</button>
+          <button class="btn-outline active" data-align="center" data-layer="part">Center</button>
+          <button class="btn-outline" data-align="right" data-layer="part">Right</button>
+        </div>
+      </div>
+
+      <div id="inline-download-section">
+        <div class="control-group" style="margin-top: 10px; border-top: 1px solid var(--border); padding-top: 20px;">
+          <label>Downloads</label>
+          <button id="btn-export-part" class="btn-export-part big-btn" style="margin-top:0;">Export This Part</button>
+          <button id="btn-export-all" class="btn-export-all big-btn" style="margin-top:10px;">Download All Clips</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- PROCESSING OVERLAY -->
+  <div id="processing-overlay" class="hidden">
+    <h2 id="process-status">Your clips will download soon... Please wait</h2>
+    <div class="progress-container">
+      <div id="progress-bar"></div>
+    </div>
+    <div id="clip-counter" style="color: #FFD700; font-size: 0.9rem; margin-bottom: 5px; font-weight: 700;"></div>
+    <div id="eta-timer" style="color: #888888; font-size: 0.8rem; margin-bottom: 20px;"></div>
+    <button id="btn-cancel" class="btn-cancel">Cancel</button>
+  </div>
+
+  <div class="footer">
+    <a href="#">Contact Us</a>
+    <a href="#">Terms & Conditions</a>
+    <a href="#">Privacy Policy</a>
+  </div>
+
+  <script>
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    let ffmpeg = null;
+
+    // Elements
+    const uploadScreen = document.getElementById('upload-screen');
+    const mainEditor = document.getElementById('main-editor');
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('file-input');
+    const video = document.getElementById('source-video');
+    const canvas = document.getElementById('preview-canvas');
+    const ctx = canvas.getContext('2d');
+    
+    const scrubber = document.getElementById('frame-scrubber');
+    const timeLabel = document.getElementById('time-label');
+    const partsNav = document.getElementById('parts-nav');
+    
+    // State
+    let file = null;
+    let fileName = '';
+    let videoDuration = 0;
+    let canvasW = 270;
+    let canvasH = 480;
+    
+    let partsCount = 1;
+    let clipDurationSec = 15;
+    let currentPartIndex = 0;
+    
+    let clips = []; // output blobs
+    let cancelRequested = false;
+    let globalProgressBase = 0;
+    let globalProgressScale = 1;
+    let exportStartTime = 0;
+
+    // Text Layers state
+    let layers = {
+      title: {
+        text: 'Your title here',
+        font: "'Noto Sans'",
+        size: 36,
+        color: '#FFD700',
+        align: 'center',
+        x_pct: 0.5,
+        y_pct: 0.15,
+        bounds: {x:0, y:0, w:0, h:0}
+      },
+      part: {
+        text: 'Part - 1',
+        font: "'Noto Sans'",
+        size: 24,
+        color: '#FFFFFF',
+        align: 'center',
+        x_pct: 0.5,
+        y_pct: 0.85,
+        bounds: {x:0, y:0, w:0, h:0}
+      }
+    };
+
+    // --- UTILS ---
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60).toString().padStart(2, '0');
+      const s = Math.floor(sec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function parseTime(str) {
+      const parts = str.split(':');
+      if (parts.length !== 2) return 0;
+      return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+    }
+
+    function wrapText(c, text, x, y, maxW, lh) {
+      if (!text) return { width: 0, height: 0, lines: 0 };
+      const words = text.split(' ');
+      let line = '', lines = [];
+      let maxWidthUsed = 0;
+      words.forEach(w => {
+        const t = line + w + ' ';
+        const metrics = c.measureText(t);
+        if (metrics.width > maxW && line) {
+          lines.push(line.trim());
+          maxWidthUsed = Math.max(maxWidthUsed, c.measureText(line.trim()).width);
+          line = w + ' ';
+        }
+        else {
+          line = t;
+        }
+      });
+      if (line.trim()) {
+        lines.push(line.trim());
+        maxWidthUsed = Math.max(maxWidthUsed, c.measureText(line.trim()).width);
+      }
+      const startY = y - (lines.length - 1) * lh / 2;
+      lines.forEach((l, i) => c.fillText(l, x, startY + i * lh));
+      
+      return { width: maxWidthUsed, height: lines.length * lh, lines: lines.length, startY };
+    }
+
+    // --- INITIALIZATION ---
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    function handleFile(selectedFile) {
+      file = selectedFile;
+      fileName = file.name;
+      const url = URL.createObjectURL(file);
+      video.src = url;
+      video.load();
+    }
+
+    video.addEventListener('loadedmetadata', () => {
+      videoDuration = video.duration;
+      uploadScreen.classList.add('hidden');
+      mainEditor.classList.remove('hidden');
+      document.getElementById('btn-change').classList.remove('hidden');
+      
+      setAspectRatio('9:16');
+      updatePartsCalculation();
+      generatePartPills();
+      selectPart(0);
+      
+      // Force draw once video can play
+      video.currentTime = 0;
+    });
+
+    video.addEventListener('seeked', () => {
+      drawCanvas();
+    });
+
+    function resetApp() {
+      uploadScreen.classList.remove('hidden');
+      mainEditor.classList.add('hidden');
+      document.getElementById('btn-change').classList.add('hidden');
+      video.src = '';
+      file = null;
+      fileName = '';
+      videoDuration = 0;
+      partsCount = 1;
+      clipDurationSec = 15;
+      currentPartIndex = 0;
+      clips = [];
+      // Do NOT set cancelRequested = false here to prevent cancel bug
+      document.getElementById('input-duration').value = '00:15';
+    }
+
+    // --- CANVAS SIZING & DRAWING ---
+    function setAspectRatio(ratioStr) {
+      document.querySelectorAll('[id^="btn-ratio-"]').forEach(b => b.classList.remove('active'));
+      document.querySelector(`[data-ratio="${ratioStr}"]`).classList.add('active');
+
+      if (ratioStr === '9:16') { canvasW = 270; canvasH = 480; }
+      else if (ratioStr === '1:1') { canvasW = 390; canvasH = 390; }
+      else if (ratioStr === '16:9') { canvasW = 480; canvasH = 270; }
+
+      canvas.width = canvasW;
+      canvas.height = canvasH;
+      drawCanvas();
+    }
+
+    document.querySelectorAll('[id^="btn-ratio-"]').forEach(btn => {
+      btn.addEventListener('click', (e) => setAspectRatio(e.target.dataset.ratio));
+    });
+
+    function drawCanvas() {
+      if (!videoDuration) return;
+
+      // Clear
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvasW, canvasH);
+
+      // Letterbox Math
+      const vr = video.videoWidth / video.videoHeight;
+      const cr = canvasW / canvasH;
+      let drawW, drawH, drawX, drawY;
+
+      if (vr > cr) { 
+        drawW = canvasW; 
+        drawH = canvasW / vr; 
+        drawX = 0; 
+        drawY = (canvasH - drawH) / 2;
+      } else { 
+        drawH = canvasH; 
+        drawW = canvasH * vr; 
+        drawX = (canvasW - drawW) / 2; 
+        drawY = 0; 
+      }
+
+      ctx.drawImage(video, drawX, drawY, drawW, drawH);
+
+      // Draw Texts
+      drawTextLayer('title');
+      drawTextLayer('part');
+    }
+
+    function drawTextLayer(layerKey) {
+      const l = layers[layerKey];
+      ctx.font = `bold ${l.size}px ${l.font}`;
+      ctx.fillStyle = l.color;
+      ctx.textBaseline = 'middle';
+      
+      let x = l.x_pct * canvasW;
+      let y = l.y_pct * canvasH;
+
+      ctx.textAlign = l.align;
+
+      // Update text if it's part layer
+      if (layerKey === 'part') {
+        l.text = `Part - ${currentPartIndex + 1}`;
+      }
+
+      const pad = 16;
+      const maxW = canvasW - pad * 2;
+      const lh = l.size * 1.35;
+      
+      const { width: bw, height: bh, startY } = wrapText(ctx, l.text, x, y, maxW, lh);
+
+      let bx;
+      if (l.align === 'center') {
+        bx = x - bw/2;
+      } else if (l.align === 'right') {
+        bx = x - bw;
+      } else {
+        bx = x;
+      }
+      let by = startY - lh/2;
+
+      // Add padding to bounds
+      l.bounds = { x: bx - 10, y: by - 10, w: bw + 20, h: bh + 20 };
+
+      // Draw dashed box
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 5]);
+      ctx.strokeRect(l.bounds.x, l.bounds.y, l.bounds.w, l.bounds.h);
+      ctx.setLineDash([]); // reset
+    }
+
+    // --- DRAG LOGIC ---
+    let isDragging = false;
+    let dragLayer = null;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    canvas.addEventListener('mousedown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      // Check part first (usually on top of video, title at very top)
+      if (isInside(mx, my, layers.part.bounds)) dragLayer = 'part';
+      else if (isInside(mx, my, layers.title.bounds)) dragLayer = 'title';
+
+      if (dragLayer) {
+        isDragging = true;
+        const l = layers[dragLayer];
+        dragOffsetX = mx - (l.x_pct * canvasW);
+        dragOffsetY = my - (l.y_pct * canvasH);
+      }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (!isDragging || !dragLayer) return;
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      let newX = mx - dragOffsetX;
+      let newY = my - dragOffsetY;
+
+      // Keep within canvas
+      newX = Math.max(0, Math.min(canvasW, newX));
+      newY = Math.max(0, Math.min(canvasH, newY));
+
+      layers[dragLayer].x_pct = newX / canvasW;
+      layers[dragLayer].y_pct = newY / canvasH;
+      drawCanvas();
+    });
+
+    canvas.addEventListener('mouseup', () => { isDragging = false; dragLayer = null; });
+    canvas.addEventListener('mouseleave', () => { isDragging = false; dragLayer = null; });
+
+    function isInside(x, y, b) {
+      return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    }
+
+    // --- SCRUBBER & PARTS ---
+    const inputDuration = document.getElementById('input-duration');
+    const partsCountLabel = document.getElementById('parts-count-label');
+
+    inputDuration.addEventListener('change', () => {
+      updatePartsCalculation();
+      generatePartPills();
+      selectPart(0);
+    });
+
+    function updatePartsCalculation() {
+      clipDurationSec = parseTime(inputDuration.value) || 15;
+      partsCount = Math.ceil(videoDuration / clipDurationSec);
+      partsCountLabel.textContent = `→ ${partsCount} part${partsCount > 1 ? 's' : ''}`;
+      clips = new Array(partsCount).fill(null); // reset clips
+    }
+
+    function generatePartPills() {
+      partsNav.innerHTML = '';
+      for (let i = 0; i < partsCount; i++) {
+        const start = i * clipDurationSec;
+        const end = Math.min((i + 1) * clipDurationSec, videoDuration);
+        
+        const btn = document.createElement('button');
+        btn.className = 'part-pill';
+        btn.textContent = `Part ${i + 1} / ${formatTime(start)}–${formatTime(end)}`;
+        btn.dataset.idx = i;
+        btn.onclick = () => selectPart(i);
+        partsNav.appendChild(btn);
+      }
+    }
+
+    function selectPart(idx) {
+      currentPartIndex = idx;
+      
+      // Update pills UI
+      Array.from(partsNav.children).forEach((child, i) => {
+        if (i === idx) child.classList.add('active');
+        else child.classList.remove('active');
+      });
+
+      // Update Scrubber Range
+      const start = idx * clipDurationSec;
+      const end = Math.min((idx + 1) * clipDurationSec, videoDuration);
+      
+      scrubber.min = start;
+      scrubber.max = end;
+      scrubber.value = start;
+      video.currentTime = start;
+      updateTimeLabel(start);
+
+      // Update button label
+      const btnExportPart = document.getElementById('btn-export-part');
+      btnExportPart.textContent = `Export Part ${idx + 1}`;
+
+      drawCanvas(); // Will update "Part - N" text
+    }
+
+    scrubber.addEventListener('input', (e) => {
+      const t = parseFloat(e.target.value);
+      video.currentTime = t;
+      updateTimeLabel(t);
+    });
+
+    function updateTimeLabel(t) {
+      timeLabel.textContent = formatTime(t);
+    }
+
+    // --- TEXT CONTROLS LOGIC ---
+    function bindTextControl(layerKey, inputId, prop, isNumber = false) {
+      const el = document.getElementById(inputId);
+      el.addEventListener('input', (e) => {
+        layers[layerKey][prop] = isNumber ? parseInt(e.target.value, 10) : e.target.value;
+        
+        if (prop === 'size') {
+          document.getElementById(`${layerKey}-size-label`).textContent = `Size (${e.target.value})`;
+        }
+        
+        drawCanvas();
+      });
+    }
+
+    bindTextControl('title', 'title-text-input', 'text');
+    bindTextControl('title', 'title-color', 'color');
+    bindTextControl('title', 'title-font', 'font');
+    bindTextControl('title', 'title-size', 'size', true);
+
+    bindTextControl('part', 'part-color', 'color');
+    bindTextControl('part', 'part-font', 'font');
+    bindTextControl('part', 'part-size', 'size', true);
+
+    document.querySelectorAll('[data-align]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const align = e.target.dataset.align;
+        const layer = e.target.dataset.layer;
+        
+        // UI update
+        e.target.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+
+        // State update
+        layers[layer].align = align;
+        if (align === 'left') layers[layer].x_pct = 0.05; // 5% from left
+        else if (align === 'center') layers[layer].x_pct = 0.5;
+        else if (align === 'right') layers[layer].x_pct = 0.95;
+
+        drawCanvas();
+      });
+    });
+
+    // --- PROCESSING & FFMPEG ---
+    const overlay = document.getElementById('processing-overlay');
+    const statusTxt = document.getElementById('process-status');
+    const progressBar = document.getElementById('progress-bar');
+    const btnCancel = document.getElementById('btn-cancel');
+    
+    let isFFmpegLoaded = false;
+    let isFFmpegLoading = false;
+
+    btnCancel.addEventListener('click', () => {
+      cancelRequested = true;
+      btnCancel.disabled = true;
+      btnCancel.textContent = 'Cancelled';
+      
+      // Stop ffmpeg immediately to free up browser memory
+      try { if (ffmpeg) ffmpeg.exit(); } catch(e){}
+      isFFmpegLoaded = false;
+      isFFmpegLoading = false;
+      isProcessing = false;
+      
+      // Immediately hide overlay so screen doesn't feel frozen
+      overlay.classList.add('hidden');
+      
+      // Return to home screen
+      resetApp();
+    });
+
+    async function initFFmpeg() {
+      if (isFFmpegLoaded) return;
+      if (isFFmpegLoading) {
+        // Wait for the ongoing load to finish if user clicked multiple times
+        while (isFFmpegLoading) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+        return;
+      }
+
+      isFFmpegLoading = true;
+      
+      ffmpeg = createFFmpeg({
+        corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
+        mainName: 'main',
+        log: true
+      });
+
+      ffmpeg.setProgress(({ ratio }) => {
+        if (cancelRequested) return;
+        let r = ratio;
+        if (r < 0) r = 0;
+        if (r > 1) r = 1;
+        const totalProgress = (globalProgressBase + r * globalProgressScale);
+        progressBar.style.width = `${totalProgress * 100}%`;
+        
+        if (exportStartTime > 0 && totalProgress > 0.01) {
+          const elapsed = Date.now() - exportStartTime;
+          const remainingMs = (elapsed / totalProgress) - elapsed;
+          if (remainingMs > 0) {
+            const remSec = Math.floor(remainingMs / 1000);
+            document.getElementById('eta-timer').textContent = `Estimated time left: ${formatTime(remSec)}`;
+          }
+        } else {
+          document.getElementById('eta-timer').textContent = 'Estimated time left: Calculating...';
+        }
+      });
+
+      await ffmpeg.load();
+
+      statusTxt.textContent = 'Your clips will download soon... Please wait';
+      const fileData = await fetchFile(file);
+      ffmpeg.FS('writeFile', 'input.mp4', fileData);
+      
+      isFFmpegLoaded = true;
+      isFFmpegLoading = false;
+    }
+
+    async function generateOverlayPNG(partIndex) {
+      let targetW, targetH;
+      if (canvasW < canvasH) { targetW = 720; targetH = 1280; }
+      else if (canvasW === canvasH) { targetW = 720; targetH = 720; }
+      else { targetW = 1280; targetH = 720; }
+
+      const scaleX = targetW / canvasW;
+      const scaleY = targetH / canvasH;
+
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = targetW;
+      offCanvas.height = targetH;
+      const offCtx = offCanvas.getContext('2d');
+      offCtx.clearRect(0, 0, targetW, targetH);
+
+      const t = layers.title;
+      offCtx.font = `bold ${t.size * scaleY}px ${t.font}`;
+      offCtx.fillStyle = t.color;
+      offCtx.textBaseline = 'middle';
+      offCtx.textAlign = t.align;
+      const tPad = 16 * scaleX;
+      const tMaxW = targetW - tPad * 2;
+      const tLh = t.size * scaleY * 1.35;
+      wrapText(offCtx, t.text, t.x_pct * targetW, t.y_pct * targetH, tMaxW, tLh);
+
+      const p = layers.part;
+      offCtx.font = `bold ${p.size * scaleY}px ${p.font}`;
+      offCtx.fillStyle = p.color;
+      offCtx.textBaseline = 'middle';
+      offCtx.textAlign = p.align;
+      const pLh = p.size * scaleY * 1.35;
+      wrapText(offCtx, `Part - ${partIndex + 1}`, p.x_pct * targetW, p.y_pct * targetH, tMaxW, pLh);
+
+      return new Promise(resolve => {
+        offCanvas.toBlob(blob => resolve({ blob, targetW, targetH }), 'image/png');
+      });
+    }
+
+    async function processPart(i) {
+      const start = i * clipDurationSec;
+      const duration = Math.min(clipDurationSec, videoDuration - start);
+      const outName = `part_${i + 1}.mp4`;
+
+      await new Promise(r => setTimeout(r, 200));
+
+      const { blob: overlayBlob, targetW, targetH } = await generateOverlayPNG(i);
+      const overlayData = new Uint8Array(await overlayBlob.arrayBuffer());
+      ffmpeg.FS('writeFile', 'overlay.png', overlayData);
+      
+      await ffmpeg.run(
+        '-y',
+        '-ss', String(start),
+        '-i', 'input.mp4',
+        '-i', 'overlay.png',
+        '-t', String(duration),
+        '-filter_complex', `[0:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2[bg];[bg][1:v]overlay=0:0`,
+        '-preset', 'ultrafast',
+        outName
+      );
+
+      ffmpeg.FS('unlink', 'overlay.png');
+
+      const data = ffmpeg.FS('readFile', outName);
+      const blob = new Blob([data.buffer], { type: 'video/mp4' });
+      ffmpeg.FS('unlink', outName);
+      return blob;
+    }
+
+    // --- DOWNLOADS ---
+    const btnExportPart = document.getElementById('btn-export-part');
+    const btnExportAll = document.getElementById('btn-export-all');
+
+    let isProcessing = false;
+
+    btnExportPart.addEventListener('click', async () => {
+      if (isProcessing) return;
+      isProcessing = true;
+      globalProgressBase = 0;
+      globalProgressScale = 1;
+
+      cancelRequested = false;
+      exportStartTime = Date.now();
+      document.getElementById('clip-counter').textContent = '';
+      document.getElementById('eta-timer').textContent = '';
+      btnCancel.classList.add('hidden'); // Instant, so no cancel
+      overlay.classList.remove('hidden');
+      progressBar.style.width = '0%';
+      statusTxt.textContent = `Your clips will download soon... Please wait`;
+
+      try {
+        await initFFmpeg();
+        if (cancelRequested) { isProcessing = false; return; }
+
+        const blob = await processPart(currentPartIndex);
+        
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `part_${currentPartIndex + 1}.mp4`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        progressBar.style.width = '100%';
+        statusTxt.textContent = 'Done!';
+
+        // Clean up ffmpeg so it can run again later
+        try { ffmpeg.exit(); } catch(e){}
+        isFFmpegLoaded = false;
+      } catch (e) {
+        console.error(e);
+        alert('Error processing part. See console for details.');
+        
+        try { ffmpeg.exit(); } catch(err){}
+        isFFmpegLoaded = false;
+      }
+      
+      setTimeout(() => {
+        if (!cancelRequested) overlay.classList.add('hidden');
+        isProcessing = false;
+      }, 1000);
+    });
+
+    btnExportAll.addEventListener('click', async () => {
+      if (isProcessing) return;
+      isProcessing = true;
+
+      cancelRequested = false;
+      exportStartTime = Date.now();
+      document.getElementById('clip-counter').textContent = '';
+      document.getElementById('eta-timer').textContent = '';
+      btnCancel.disabled = false;
+      btnCancel.textContent = 'Cancel';
+      btnCancel.classList.remove('hidden');
+      overlay.classList.remove('hidden');
+      progressBar.style.width = '0%';
+
+      try {
+        const zip = new JSZip();
+        let completed = 0;
+
+        for (let i = 0; i < partsCount; i++) {
+          if (cancelRequested) { isProcessing = false; return; }
+          
+          globalProgressBase = i / partsCount;
+          globalProgressScale = 1 / partsCount;
+
+          statusTxt.textContent = `Your clips will download soon... Please wait`;
+          document.getElementById('clip-counter').textContent = `Clips ready: ${completed} / ${partsCount}`;
+          progressBar.style.width = `${(globalProgressBase) * 100}%`;
+          
+          try {
+            await initFFmpeg();
+            const blob = await processPart(i);
+            zip.file(`part_${i + 1}.mp4`, blob);
+            completed++;
+            
+            try { ffmpeg.exit(); } catch(e){}
+            isFFmpegLoaded = false;
+          } catch (err) {
+            console.warn(`Error processing part ${i}`, err);
+            try { ffmpeg.exit(); } catch(e){}
+            isFFmpegLoaded = false;
+          }
+        }
+        
+        if (completed > 0 && !cancelRequested) {
+          document.getElementById('clip-counter').textContent = `Clips ready: ${completed} / ${partsCount}`;
+          statusTxt.textContent = 'Creating ZIP...';
+          const zipBlob = await zip.generateAsync({ type: 'blob' });
+          const url = URL.createObjectURL(zipBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'reel_clips.zip';
+          a.click();
+          URL.revokeObjectURL(url);
+          
+          progressBar.style.width = '100%';
+          statusTxt.textContent = 'Done!';
+        }
+
+        // Clean up ffmpeg so it can run again later
+        try { ffmpeg.exit(); } catch(e){}
+        isFFmpegLoaded = false;
+        
+      } catch (e) {
+        console.error(e);
+        if (!cancelRequested) alert('Error processing clips.');
+      }
+      
+      setTimeout(() => {
+        if (!cancelRequested) overlay.classList.add('hidden');
+        isProcessing = false;
+      }, 1500);
+    });
+
+  </script>
+</body>
+</html>
